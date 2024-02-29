@@ -18,7 +18,7 @@ def connect_to_bastion(bastion: BastionDefinition):
         
     paramiko.util.log_to_file('/tmp/paramiko.log')
 
-    key_path = "/tmp/bastion_test.pem"
+    key_path = "/tmp/bastion_test.pem" # TODO: Pass it and also the 'username' as a variable, not hardcoded
     host = bastion.bastion_public_ip(bastion_id)
     username = "ec2-user"
         
