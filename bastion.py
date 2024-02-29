@@ -1,6 +1,6 @@
 import boto3
 
-class BastionDefinition():
+class BastionDefinition(): 
     def __init__(self):
         self.bastion = None
         self.client = boto3.client('ec2')
@@ -24,7 +24,6 @@ class BastionDefinition():
         state = response["InstanceStatuses"][0]["InstanceState"]["Name"]
         return state
 
-    
     def start_bastion(self, instance_id: str) -> bool:
         self.client.start_instances(InstanceIds=[instance_id])
         waiter = self.client.get_waiter('instance_running')
