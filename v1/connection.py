@@ -1,14 +1,15 @@
-from bastion import BastionDefinition
-from logger import LoggerDefinition
-from ssh_conn import SSHDefinition
+from v1.bastion import BastionDefinition
+from v1.logger import LoggerDefinition
+from v1.ssh_conn import SSHDefinition
 
-def connect_to_bastion(bastion: BastionDefinition):
+def bastion_connection(key_path: str, username: str):
     logger = LoggerDefinition().logger()
+    bastion = BastionDefinition()
 
     bastion_id = bastion.find_bastion_instance()
     bastion_state = bastion.get_bastion_state(bastion_id)
-    key_path = "/tmp/bastion_test.pem" # TODO: Pass it and also the 'username' as a variable, not hardcoded
-    username = "ec2-user"
+    key_path = key_path # TODO: Pass it and also the 'username' as a variable, not hardcoded
+    username = username
 
     if bastion_state is None:
         logger.error("Bastion is neither stopped or running")

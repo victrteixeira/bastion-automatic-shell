@@ -1,8 +1,7 @@
 import paramiko
 import sys
-from bastion import BastionDefinition
-
-from logger import LoggerDefinition
+from v1.bastion import BastionDefinition
+from v1.logger import LoggerDefinition
 
 class SSHDefinition():
     def __init__(self):

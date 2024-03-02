@@ -1,7 +1,7 @@
 import boto3
 import botocore.exceptions
 
-from logger import LoggerDefinition
+from v1.logger import LoggerDefinition
 
 # TODO: Check the try/except blocks usage here
 class BastionDefinition(): 
