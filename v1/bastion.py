@@ -1,7 +1,13 @@
+from typing import List
 import boto3
 import botocore.exceptions
 import sys
 import typer
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from prompt_toolkit import prompt
+from prompt_toolkit.completion import WordCompleter
 
 from v1.logger import LoggerDefinition
 
@@ -11,18 +17,21 @@ class BastionDefinition():
         self.client = boto3.client('ec2')
         self.logger = LoggerDefinition().logger()
     
-    def find_bastion_instance(self, bastion_name: str) -> str:
-        response = self.client.describe_instances()
-        for reservation in response["Reservations"]:
-            for instance in reservation["Instances"]:
-                for tag in instance["Tags"]:
-                    if tag["Key"] == "Name" and bastion_name in tag["Value"].lower():
-                        self.bastion = instance["InstanceId"]
-                        return self.bastion
+    def find_bastion_instance(self, bastion_name: str = None) -> str:
+        if bastion_name is not None:
+            response = self.client.describe_instances()
+            for reservation in response["Reservations"]:
+                for instance in reservation["Instances"]:
+                    for tag in instance["Tags"]:
+                        if tag["Key"] == "Name" and bastion_name.lower() in tag["Value"].lower():
+                            self.bastion = instance["InstanceId"]
+                            return self.bastion
 
         if self.bastion is None:
-            self.logger.error(f"No bastion instance found: {bastion_name}")
-            sys.exit(1) # TODO: Make it not exit the program, but gives an option to select a different bastion
+            self.logger.warning(f"No bastion instance found for this name: {bastion_name}.")
+            instances_names: List[str] = self.instances_names()
+            selected_bastion_name: str = self.select_instance(instances_names)
+            return self.find_bastion_instance(selected_bastion_name)
 
         return self.bastion
     
@@ -78,4 +87,31 @@ class BastionDefinition():
             self.logger.error(f"Error getting bastion public ip: {e}")
             self.logger.warning(f"Check if the selected bastion instance has a public IP address")
             sys.exit(1)
-            
+
+    def instances_names(self) -> List[str]:
+        instances: List[str] = []
+        response = self.client.describe_instances()
+        for reservation in response["Reservations"]:
+            for instance in reservation["Instances"]:
+                for tag in instance["Tags"]:
+                    if tag["Key"] == "Name":
+                        instances.append(tag["Value"])
+
+        return instances
+    
+    def select_instance(self, instances: List[str]) -> str:
+        console = Console()
+        table = Table(title="Instances", show_lines=True, header_style="bold magenta")
+        table.add_column("Instance Name", style="dim", justify="center")
+        for instance in instances:
+            table.add_row(instance)
+
+        console.print(Panel.fit(table, title="Select a bastion instance (type 'exit' to cancel)", border_style="green"))
+        completer = WordCompleter(instances + ["exit"], ignore_case=True, sentence=True)
+        instance = prompt("Select an instance: ", completer=completer)
+
+        if instance == "exit":
+            self.logger.warning("Operation cancelled by user")
+            sys.exit(0)
+
+        return instance
