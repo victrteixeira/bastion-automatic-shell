@@ -1,10 +1,10 @@
 import boto3
 import botocore.exceptions
 import sys
+import typer
 
 from v1.logger import LoggerDefinition
 
-# TODO: Check the try/except blocks usage here
 class BastionDefinition(): 
     def __init__(self):
         self.bastion = None
@@ -52,6 +52,11 @@ class BastionDefinition():
             sys.exit(1)
         
     def stop_bastion(self, instance_id: str) -> bool:
+        confirm = typer.confirm(f"Do you want to stop the bastion instance: ${instance_id}?")
+        if not confirm:
+            self.logger.warning("Bastion instance not stopped")
+            return True
+
         try:
             self.client.stop_instances(InstanceIds=[instance_id])
             self.logger.info(f"Stopping bastion instance")
