@@ -1,10 +1,11 @@
+import time
 from v1.bastion import BastionDefinition
 from v1.logger import LoggerDefinition
 from v1.ssh_conn import SSHDefinition
 import botocore.exceptions
 import sys
 
-def bastion_connection(bastion_name: str, key_path: str, username: str):
+def bastion_connection(bastion_name: str, key_path: str, username: str, wait_ssh: int):
     logger = LoggerDefinition().logger()
     bastion = BastionDefinition()
 
@@ -18,6 +19,10 @@ def bastion_connection(bastion_name: str, key_path: str, username: str):
     if bastion_state == 'stopped':
         logger.info("Bastion stopped, starting it")
         bastion.start_bastion(bastion_id)
+
+    logger.info("Bastion is now running.")
+    logger.info(f"Waiting {wait_ssh} seconds for SSH service to initialize.")
+    time.sleep(wait_ssh)
 
     host = bastion.bastion_public_ip(bastion_id)
         

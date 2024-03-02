@@ -45,6 +45,7 @@ class BastionDefinition():
             self.client.start_instances(InstanceIds=[instance_id])
             self.logger.info(f"Starting bastion instance")
             waiter = self.client.get_waiter('instance_running')
+            self.logger.info("Waiting for bastion to enter 'running' state")
             waiter.wait(InstanceIds=[instance_id])
             self.logger.info(f"Bastion instance successfully started")
         except botocore.exceptions.BotoCoreError as e:

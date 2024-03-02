@@ -2,6 +2,7 @@ import paramiko
 import sys
 from v1.bastion import BastionDefinition
 from v1.logger import LoggerDefinition
+from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
 class SSHDefinition():
     def __init__(self):
@@ -14,7 +15,13 @@ class SSHDefinition():
         try:
             self.ssh_client.connect(hostname=host, username=username, key_filename=key_path)
             self.logger.info('Successfully connected to bastion')
-        except paramiko.ssh_exception.SSHException as e:
+        except NoValidConnectionsError as e:
+            self.logger.error(f"SSH Connection could not be established: {e}")
+            self.logger.warning("""It, perhaps, was caused due the SSH service is not ready yet.
+            You should try --wait--ssh 'seconds' option to wait for the SSH service to be ready.
+            $ python main.py connect --help""")
+            sys.exit(1)
+        except SSHException as e:
             self.logger.error(f"SSH Error Connection Happened: {e}")
             sys.exit(1)
     
@@ -46,4 +53,4 @@ class SSHDefinition():
             self.ssh_client.close()
 
             if bastion.stop_bastion(bastion_id) is True:
-                self.logger.info('Bastion stopped')
+                self.logger.info('Process finished.')

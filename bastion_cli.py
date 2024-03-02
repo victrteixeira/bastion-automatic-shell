@@ -8,8 +8,9 @@ app = typer.Typer()
 @app.command()
 def connect(bastion_name: str = typer.Option(..., "--bastion-name", help="Name of the bastion instance in AWS"),
             key_path: str = typer.Option(..., "--key-path", help="Path to the SSH key in your computer to connect to the bastion"),
-            username: str = typer.Option(..., help="Bastion username to connect to the bastion")):
-    bastion_connection(bastion_name, key_path, username)
+            username: str = typer.Option(..., help="Bastion username to connect to the bastion"),
+            wait_ssh: int = typer.Option(10, "--wait-ssh", help="Seconds to wait for the SSH service to be ready")):
+    bastion_connection(bastion_name, key_path, username, wait_ssh)
 
 @app.command()
 def about():
