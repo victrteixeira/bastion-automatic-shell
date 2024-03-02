@@ -1,19 +1,19 @@
 from v1.bastion import BastionDefinition
 from v1.logger import LoggerDefinition
 from v1.ssh_conn import SSHDefinition
+import botocore.exceptions
+import sys
 
-def bastion_connection(key_path: str, username: str):
+def bastion_connection(bastion_name: str, key_path: str, username: str):
     logger = LoggerDefinition().logger()
     bastion = BastionDefinition()
 
-    bastion_id = bastion.find_bastion_instance()
-    bastion_state = bastion.get_bastion_state(bastion_id)
-    key_path = key_path # TODO: Pass it and also the 'username' as a variable, not hardcoded
-    username = username
+    if not check_aws_configuration(bastion.client, logger):
+        logger.critical("AWS configuration is not properly set up. Exiting.")
+        sys.exit(1)
 
-    if bastion_state is None:
-        logger.error("Bastion is neither stopped or running")
-        raise ValueError("Bastion is not in a valid state")
+    bastion_id = bastion.find_bastion_instance(bastion_name)
+    bastion_state = bastion.get_bastion_state(bastion_id)
 
     if bastion_state == 'stopped':
         logger.info("Bastion stopped, starting it")
@@ -24,4 +24,18 @@ def bastion_connection(key_path: str, username: str):
     sc = SSHDefinition()
     sc.ssh_connector(host=host, username=username, key_path=key_path)
     sc.ssh_terminal_channel(bastion=bastion, bastion_id=bastion_id)
-    
+
+def check_aws_configuration(client, logger) -> bool:
+    try:
+        client.describe_regions()
+    except botocore.exceptions.NoCredentialsError as e:
+        logger.error("AWS credentials not found: %s", e.args)
+        return False
+    except botocore.exceptions.PartialCredentialsError as e:
+        logger.error("AWS credentials are incomplete: %s", e.args)
+        return False
+    except botocore.exceptions.ClientError as e:
+        logger.error("Authentication failure with AWS: %s", e.args) 
+        return False
+        
+    return True

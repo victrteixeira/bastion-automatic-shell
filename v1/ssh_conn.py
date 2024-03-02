@@ -16,7 +16,7 @@ class SSHDefinition():
             self.logger.info('Successfully connected to bastion')
         except paramiko.ssh_exception.SSHException as e:
             self.logger.error(f"SSH Error Connection Happened: {e}")
-            raise e
+            sys.exit(1)
     
     def ssh_terminal_channel(self, bastion: BastionDefinition, bastion_id: str):
         try:
@@ -36,7 +36,7 @@ class SSHDefinition():
                 channel.send(command + "\n")
         except paramiko.ssh_exception.ChannelException as e:
             self.logger.error(f"Channel Error Happened: {e}")
-            raise e
+            sys.exit(1)
         finally:
             if self.ssh_client.get_transport() is None or not self.ssh_client.get_transport().is_active():
                 self.logger.info('No SSH connection to close')

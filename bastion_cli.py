@@ -6,9 +6,10 @@ from v1.connection import bastion_connection
 app = typer.Typer()
 
 @app.command()
-def connect(key_path: str = typer.Option(..., "--key-path", help="Path to the SSH key in your computer to connect to the bastion"),
+def connect(bastion_name: str = typer.Option(..., "--bastion-name", help="Name of the bastion instance in AWS"),
+            key_path: str = typer.Option(..., "--key-path", help="Path to the SSH key in your computer to connect to the bastion"),
             username: str = typer.Option(..., help="Bastion username to connect to the bastion")):
-    bastion_connection(key_path, username)
+    bastion_connection(bastion_name, key_path, username)
 
 @app.command()
 def about():
