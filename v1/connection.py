@@ -29,7 +29,7 @@ def bastion_connection(bastion_name: str, key_path: str, username: str, wait_ssh
         
     sc = SSHDefinition()
     sc.ssh_connector(host=host, username=username, key_path=key_path)
-    sc.ssh_terminal_channel(bastion=bastion, bastion_id=bastion_id)
+    sc.ssh_interactive_shell(bastion=bastion, bastion_id=bastion_id)
 
 def check_aws_configuration(client, logger) -> bool:
     try:

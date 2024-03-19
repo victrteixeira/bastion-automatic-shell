@@ -1,3 +1,4 @@
+import select
 import paramiko
 import sys
 from v1.bastion import BastionDefinition
@@ -25,22 +26,34 @@ class SSHDefinition():
             self.logger.error(f"SSH Error Connection Happened: {e}")
             sys.exit(1)
     
-    def ssh_terminal_channel(self, bastion: BastionDefinition, bastion_id: str):
+
+    def ssh_interactive_shell(self, bastion: BastionDefinition, bastion_id: str):
         try:
             channel = self.ssh_client.invoke_shell()
             self.logger.info('Interactive SSH session established')
 
             while True:
-                while channel.recv_ready():
-                    sys.stdout.write(channel.recv(1024).decode("utf-8"))
-                    sys.stdout.flush()
+                r, _, _ = select.select([channel, sys.stdin], [], [], 0.1)
 
-                command = input()
-                if command.lower() == 'exit':
-                    self.logger.info('Exiting the interactive shell')
+                if channel in r:
+                    while channel.recv_ready():
+                        sys.stdout.write(channel.recv(1024).decode('utf-8'))
+                        sys.stdout.flush()
+
+                    while channel.recv_stderr_ready():
+                        sys.stderr.write(channel.recv_stderr(1024).decode('utf-8'))
+                        sys.stderr.flush()
+
+                if sys.stdin in r:
+                    command = sys.stdin.readline()
+                    if command.lower().strip() == 'exit':
+                        self.logger.info('Exiting the interactive shell')
+                        break
+
+                    channel.send(command)
+
+                if channel.exit_status_ready():
                     break
-
-                channel.send(command + "\n")
         except paramiko.ssh_exception.ChannelException as e:
             self.logger.error(f"Channel Error Happened: {e}")
             sys.exit(1)
