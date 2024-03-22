@@ -12,7 +12,7 @@ class SSHDefinition():
         self.ssh_client = paramiko.SSHClient()
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    def ssh_connector(self, host: str, username: str, key_path: str):
+    def ssh_session(self, host: str, username: str, key_path: str):
         try:
             self.ssh_client.connect(hostname=host, username=username, key_filename=key_path)
             self.logger.info('Successfully connected to bastion')
@@ -25,7 +25,6 @@ class SSHDefinition():
         except SSHException as e:
             self.logger.error(f"SSH Error Connection Happened: {e}")
             sys.exit(1)
-    
 
     def ssh_interactive_shell(self, bastion: BastionDefinition, bastion_id: str):
         try:
