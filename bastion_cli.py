@@ -1,18 +1,28 @@
 import typer
 from typing import List
 
-from v1.connection import bastion_connection
+from v1.connection import ssh_connection, ssm_connection
 
 app = typer.Typer()
+connect_app = typer.Typer()
+app.add_typer(connect_app, name="connect")
 
-@app.command()
-def connect(key_path: str = typer.Option(..., "--key-path", "-k", help="Path to the SSH key in your computer to connect to the bastion"),
+@connect_app.command("ssh")
+def connect_ssh(
+            key_path: str = typer.Option(..., "--key-path", "-k", help="Path to the SSH key in your computer to connect to the bastion"),
             username: str = typer.Option(..., "--username", "-u", help="Bastion username to connect to the bastion"),
             bastion_name: str = typer.Option(None, "--bastion-name", help="Name of the bastion instance in AWS"),
             wait_ssh: int = typer.Option(10, "--wait-ssh", help="Seconds to wait for the SSH service to be ready")):
-    bastion_connection(bastion_name, key_path, username, wait_ssh)
+    ssh_connection(bastion_name, key_path, username, wait_ssh)
 
-@app.command()
+@connect_app.command("ssm")
+def connect_ssm(
+            interactive: bool = typer.Option(False, "--interactive-shell", "-it", help="Start an interactive session with the bastion using SSM Agent Connection"),
+            command: str = typer.Option(None, "--command", "-c", help="Command to run in the SSM session"),
+            bastion_name: str = typer.Option(None, "--bastion-name", help="Name of the bastion instance in AWS")):
+    ssm_connection(interactive, command, bastion_name)
+
+@connect_app.command("about")
 def about():
     started = typer.style("started", fg=typer.colors.GREEN, bold=True)
     stopped = typer.style("stopped", fg=typer.colors.RED, bold=True)
