@@ -1,7 +1,7 @@
 import logging
 import colorlog
 
-class LoggerDefinition():
+class LoggerDefinition(): # TODO: This log class isn't properly implemented, maybe change it to a simple function?
     @staticmethod
     def logger():
         logger = logging.getLogger(__name__)
