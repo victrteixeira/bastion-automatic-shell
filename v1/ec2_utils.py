@@ -11,13 +11,14 @@ from prompt_toolkit.completion import WordCompleter
 
 from v1.logger import LoggerDefinition
 
-class BastionDefinition(): 
+class BastionDefinition:
     def __init__(self):
         self.bastion = None
         self.client = boto3.client('ec2')
-        self.logger = LoggerDefinition().logger()
+        self.ssm = boto3.client('ssm')
+        self.logger = LoggerDefinition.logger()
     
-    def find_bastion_instance(self, bastion_name: str = None) -> str:
+    def find_instance_by_name(self, bastion_name: str = None) -> str:
         if bastion_name is not None:
             response = self.client.describe_instances()
             for reservation in response["Reservations"]:
@@ -29,13 +30,13 @@ class BastionDefinition():
 
         if self.bastion is None:
             self.logger.warning(f"No bastion instance found for this name: {bastion_name}.")
-            instances_names: List[str] = self.instances_names()
-            selected_bastion_name: str = self.select_instance(instances_names)
-            return self.find_bastion_instance(selected_bastion_name)
+            list_instance_names: List[str] = self.list_instance_names()
+            selected_bastion_name: str = self.select_instance(list_instance_names)
+            return self.find_instance_by_name(selected_bastion_name)
 
         return self.bastion
     
-    def get_bastion_state(self, instance_id: str) -> str: # TODO: Check for errors here
+    def get_instance_state(self, instance_id: str) -> str: # TODO: Check for errors here
         try:
             response = self.client.describe_instance_status(InstanceIds=[instance_id], IncludeAllInstances=True)
             state = response["InstanceStatuses"][0]["InstanceState"]["Name"]
@@ -49,7 +50,7 @@ class BastionDefinition():
             self.logger.error(f"Error getting bastion state: {e}")
             sys.exit(1)
 
-    def start_bastion(self, instance_id: str):
+    def start_instance(self, instance_id: str):
         try:
             self.client.start_instances(InstanceIds=[instance_id])
             self.logger.info(f"Starting bastion instance")
@@ -61,7 +62,7 @@ class BastionDefinition():
             self.logger.error(f"Error starting bastion: {e}")
             sys.exit(1)
         
-    def stop_bastion(self, instance_id: str) -> bool:
+    def stop_instance(self, instance_id: str) -> bool:
         confirm = typer.confirm(f"Do you want to stop the bastion instance: ${instance_id}?")
         if not confirm:
             self.logger.warning("Bastion instance not stopped")
@@ -78,7 +79,7 @@ class BastionDefinition():
             self.logger.error(f"Error stopping bastion: {e}")
             sys.exit(1)
     
-    def bastion_public_ip(self, instance_id: str) -> str:
+    def get_instance_public_ip(self, instance_id: str) -> str:
         response = self.client.describe_instances(InstanceIds=[instance_id])
         try:
             publicIpAdrr = response["Reservations"][0]["Instances"][0]["PublicIpAddress"]
@@ -88,7 +89,7 @@ class BastionDefinition():
             self.logger.warning(f"Check if the selected bastion instance has a public IP address")
             sys.exit(1)
 
-    def instances_names(self) -> List[str]:
+    def list_instance_names(self) -> List[str]:
         instances: List[str] = []
         response = self.client.describe_instances()
         for reservation in response["Reservations"]:
