@@ -14,6 +14,10 @@ class ConnectorDefinition(BastionDefinition):
         paramiko.util.log_to_file('/tmp/paramiko.log')
         self.ssh_client = paramiko.SSHClient()
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.timeouts = {
+            'ssh': 10*60,
+            'ssm': 60*60
+        }
 
     def validate_aws_configuration(self, client) -> bool:
         try:
@@ -70,17 +74,22 @@ class ConnectorDefinition(BastionDefinition):
             channel = self.ssh_client.invoke_shell()
             self.logger.info('Interactive SSH session established')
 
+            last_input_time = time.time()
+
             while True:
                 r, _, _ = select.select([channel, sys.stdin], [], [], 0.1)
+                current_time = time.time()
 
                 if channel in r:
                     while channel.recv_ready():
                         sys.stdout.write(channel.recv(1024).decode('utf-8'))
                         sys.stdout.flush()
+                        last_input_time = current_time
 
                     while channel.recv_stderr_ready():
                         sys.stderr.write(channel.recv_stderr(1024).decode('utf-8'))
                         sys.stderr.flush()
+                        last_input_time = current_time
 
                 if sys.stdin in r:
                     command = sys.stdin.readline()
@@ -91,6 +100,10 @@ class ConnectorDefinition(BastionDefinition):
                     channel.send(command)
 
                 if channel.exit_status_ready():
+                    break
+
+                if (current_time - last_input_time) > self.timeouts['ssh']:
+                    self.logger.info(f"Session timeout reached ({self.timeouts['ssh']} seconds). Terminating process. Instance was maintained running.")
                     break
         except paramiko.ssh_exception.ChannelException as e:
             self.logger.error(f"Channel Error Happened: {e}")
@@ -111,26 +124,25 @@ class ConnectorDefinition(BastionDefinition):
             self.logger.critical("AWS configuration is not properly set up. Exiting.")
             sys.exit(1)
 
-        bastion_id = self.find_instance_by_name(bastion_name)
-        bastion_state = self.get_instance_state(bastion_id)
+        instance_id = self.find_instance_by_name(bastion_name)
+        instance_state = self.get_instance_state(instance_id)
 
-        if bastion_state == 'stopped':
+        if instance_state == 'stopped':
             self.logger.info("Bastion stopped, starting it")
-            self.start_instance(bastion_id)
-
-        self.logger.info("Bastion is now running.")
+            self.start_instance(instance_id)
+            self.logger.info("Bastion is now running.")
 
         if command is not None and interactive is False and bastion_name is not None:
             self.logger.info(f"Running command {command} using secure SSM Agent connection.")
-            process = self.execute_ssm_command(command, bastion_id)
-            if process is not True: # TODO: Find a better way to finish this process
+            command_result = self.execute_ssm_command(command, instance_id)
+            if command_result is not True: # TODO: Find a better way to finish this process
                 sys.exit(1)
                 
             sys.exit(0)    
 
         if interactive is True and command is None:
             self.logger.info(f"Starting interactive shell using secure SSM Agent connection.")
-            process = self.start_ssm_session(bastion_id) # TODO: Find a way to handle possible errors here, and send an informative error message to the user
+            process = self.start_ssm_session(instance_id) # TODO: Find a way to handle possible errors here, and send an informative error message to the user
 
             if process != 0:
                 self.logger.error(f"SSM session ended with exit_code: {process}")
@@ -141,12 +153,20 @@ class ConnectorDefinition(BastionDefinition):
 
     def start_ssm_session(self, instance_id: str,):
         command = ["aws", "ssm", "start-session", "--target", instance_id]
+        last_input_time = time.time()
+
         try:
             process = subprocess.Popen(command)
             while True:
                 exit_code = process.poll()
                 if exit_code is not None: # TODO: Include a timeout to maintain the connection open and running, here and for the SSH
                     break
+                if time.time() - last_input_time > self.timeouts['ssm']:
+                    self.logger.info(f"Session timeout reached ({self.timeouts['ssm']} seconds). Terminating process. Instance was maintained running.")
+                    process.terminate()
+                    process.wait()
+                    exit_code = -1
+                    return exit_code
                 time.sleep(1)
 
             if exit_code != 0:
@@ -174,7 +194,7 @@ class ConnectorDefinition(BastionDefinition):
             InstanceId=instance_id
         )
 
-        if output["Status"] != "Success":
+        if output["Status"] != "Success": # FIXME: Some processes don't return a sucess status immediately, causing a false negative: "sudo systemctl restart amazon-ssm-agent"
             self.logger.error(f"Command failed: {output['Status']}")
             if 'StandardErrorContent' in output:
                 self.logger.error(f"Error: {output['StandardErrorContent']}")
