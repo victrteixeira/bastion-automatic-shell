@@ -8,7 +8,7 @@ import botocore.exceptions
 
 from v1.ec2_utils import BastionDefinition
 
-class ConnectorDefinition(BastionDefinition):
+class ConnectorDefinition(BastionDefinition): # TODO: Include single command execution for SSH as it happens with SSM Send_Command
     def __init__(self):
         super().__init__()
         paramiko.util.log_to_file('/tmp/paramiko.log')
@@ -34,26 +34,31 @@ class ConnectorDefinition(BastionDefinition):
         
         return True
     
-    def establish_ssh_connection_to_bastion(self, bastion_name: str, key_path: str, username: str, wait_ssh: int):
+    def ensure_instance_operational(self, bastion_name: str, wait_ssh=None) -> str:
         if not self.validate_aws_configuration(self.client):
             self.logger.critical("AWS configuration is not properly set up. Exiting.")
             sys.exit(1)
 
-        bastion_id = self.find_instance_by_name(bastion_name)
-        bastion_state = self.get_instance_state(bastion_id)
+        instance_id = self.find_instance_by_name(bastion_name)
+        instance_state = self.get_instance_state(instance_id)
 
-        if bastion_state == 'stopped':
+        if instance_state == 'stopped':
             self.logger.info("Bastion stopped, starting it")
-            self.start_instance(bastion_id)
-            self.logger.info(f"Waiting {wait_ssh} seconds for SSH service to initialize.")
-            time.sleep(wait_ssh)
+            self.start_instance(instance_id)
+            if wait_ssh is not None:
+                self.logger.info(f"Waiting {wait_ssh} seconds for SSH service to initialize.")
+                time.sleep(wait_ssh)
+            self.logger.info("Bastion is now running.")
+        
+        return instance_id
+    
+    def handle_ssh_interaction(self, bastion_name: str, key_path: str, username: str, wait_ssh: int):
+        instance_id = self.ensure_instance_operational(bastion_name)
 
-        self.logger.info("Bastion is now running.")
-
-        host = self.get_instance_public_ip(bastion_id)
+        host = self.get_instance_public_ip(instance_id)
             
         self.connect_to_bastion_via_ssh(host=host, username=username, key_path=key_path)
-        self.start_ssh_interactive_session(bastion_id=bastion_id)
+        self.start_ssh_interactive_session(instance_id)
 
     def connect_to_bastion_via_ssh(self, host: str, username: str, key_path: str):
         try:
@@ -120,17 +125,7 @@ class ConnectorDefinition(BastionDefinition):
                 self.logger.info('Process finished.')
 
     def handle_ssm_interaction(self, interactive: bool, command: str, bastion_name: str): # TODO: Fix this function, it should have a better name, better logs, and a better structure
-        if not self.validate_aws_configuration(self.client):
-            self.logger.critical("AWS configuration is not properly set up. Exiting.")
-            sys.exit(1)
-
-        instance_id = self.find_instance_by_name(bastion_name)
-        instance_state = self.get_instance_state(instance_id)
-
-        if instance_state == 'stopped':
-            self.logger.info("Bastion stopped, starting it")
-            self.start_instance(instance_id)
-            self.logger.info("Bastion is now running.")
+        instance_id = self.ensure_instance_operational(bastion_name)
 
         if command is not None and interactive is False and bastion_name is not None:
             self.logger.info(f"Running command {command} using secure SSM Agent connection.")
