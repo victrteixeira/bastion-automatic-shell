@@ -1,4 +1,4 @@
-from bastion_cli import app
+from v1.bastion_cli import app
 
 def main() -> None:
     app()
