@@ -130,7 +130,7 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
         if command is not None and interactive is False and bastion_name is not None:
             self.logger.info(f"Running command {command} using secure SSM Agent connection.")
             command_result = self.execute_ssm_command(command, instance_id)
-            if command_result is not True: # TODO: Find a better way to finish this process
+            if command_result is not True:
                 sys.exit(1)
                 
             sys.exit(0)    
@@ -154,7 +154,7 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
             process = subprocess.Popen(command)
             while True:
                 exit_code = process.poll()
-                if exit_code is not None: # TODO: Include a timeout to maintain the connection open and running, here and for the SSH
+                if exit_code is not None:
                     break
                 if time.time() - last_input_time > self.timeouts['ssm']:
                     self.logger.info(f"Session timeout reached ({self.timeouts['ssm']} seconds). Terminating process. Instance was maintained running.")
