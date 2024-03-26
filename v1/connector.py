@@ -8,7 +8,7 @@ import botocore.exceptions
 
 from v1.ec2_utils import BastionDefinition
 
-class ConnectorDefinition(BastionDefinition): # TODO: Include single command execution for SSH as it happens with SSM Send_Command
+class ConnectorDefinition(BastionDefinition):
     def __init__(self):
         super().__init__()
         paramiko.util.log_to_file('/tmp/paramiko.log')
@@ -19,6 +19,33 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
             'ssm': 60*60
         }
 
+    def handle_ssh_interaction(self, key_path: str, username: str, interactive: bool, command: str, bastion_name: str, wait_ssh: int):
+        if interactive is False and command is None:
+            self.logger.error("You must provide a command to execute when not using interactive mode.")
+            sys.exit(1)
+
+        instance_id = self.ensure_instance_operational(bastion_name, wait_ssh)
+        host = self.get_instance_public_ip(instance_id)
+        self.ssh_instance_connection_handler(host=host, username=username, key_path=key_path)
+
+        if command is not None and interactive is False:
+            self.run_ssh_command_and_exit(command)
+        elif interactive is True and command is None:
+            self.ssh_interactive_session_handler(instance_id)
+
+    def handle_ssm_interaction(self, interactive: bool, command: str, bastion_name: str):
+        if interactive is False and command is None:
+            self.logger.error("You must provide a command to execute when not using interactive mode.")
+            sys.exit(1)
+
+        instance_id = self.ensure_instance_operational(bastion_name)
+
+        if interactive is True and command is None:
+            self.start_interactive_ssm_session(instance_id)
+        elif command is not None and interactive is False:
+            self.run_ssm_command_and_exit(command, instance_id)
+
+    # ======= Utils
     def validate_aws_configuration(self, client) -> bool:
         try:
             client.describe_regions()
@@ -45,22 +72,15 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
         if instance_state == 'stopped':
             self.logger.info("Bastion stopped, starting it")
             self.start_instance(instance_id)
-            if wait_ssh is not None:
+            if wait_ssh is not None: # TODO: Check this WAIT_SSH implementation is broken for sure
                 self.logger.info(f"Waiting {wait_ssh} seconds for SSH service to initialize.")
                 time.sleep(wait_ssh)
             self.logger.info("Bastion is now running.")
         
         return instance_id
     
-    def handle_ssh_interaction(self, bastion_name: str, key_path: str, username: str, wait_ssh: int):
-        instance_id = self.ensure_instance_operational(bastion_name)
-
-        host = self.get_instance_public_ip(instance_id)
-            
-        self.connect_to_bastion_via_ssh(host=host, username=username, key_path=key_path)
-        self.start_ssh_interactive_session(instance_id)
-
-    def connect_to_bastion_via_ssh(self, host: str, username: str, key_path: str):
+    # ======= SSH
+    def ssh_instance_connection_handler(self, host: str, username: str, key_path: str):
         try:
             self.ssh_client.connect(hostname=host, username=username, key_filename=key_path)
             self.logger.info('Successfully connected to bastion')
@@ -74,7 +94,7 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
             self.logger.error(f"SSH Error Connection Happened: {e}")
             sys.exit(1)
 
-    def start_ssh_interactive_session(self, bastion_id: str):
+    def ssh_interactive_session_handler(self, bastion_id: str):
         try:
             channel = self.ssh_client.invoke_shell()
             self.logger.info('Interactive SSH session established')
@@ -124,29 +144,48 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
             if self.stop_instance(bastion_id) is True:
                 self.logger.info('Process finished.')
 
-    def handle_ssm_interaction(self, interactive: bool, command: str, bastion_name: str): # TODO: Fix this function, it should have a better name, better logs, and a better structure
-        instance_id = self.ensure_instance_operational(bastion_name)
+    def run_ssh_command_and_exit(self, command: str):
+        self.logger.info(f"Running command '{command}' using SSH connection.")
+        try:
+            _, stdout, stderr = self.ssh_client.exec_command(command)
+            output = stdout.read().decode()
+            error = stderr.read().decode()
 
-        if command is not None and interactive is False and bastion_name is not None:
-            self.logger.info(f"Running command {command} using secure SSM Agent connection.")
-            command_result = self.execute_ssm_command(command, instance_id)
-            if command_result is not True:
-                sys.exit(1)
-                
-            sys.exit(0)    
+            exit_status = stdout.channel.recv_exit_status()
 
-        if interactive is True and command is None:
-            self.logger.info(f"Starting interactive shell using secure SSM Agent connection.")
-            process = self.start_ssm_session(instance_id) # TODO: Find a way to handle possible errors here, and send an informative error message to the user
+            if exit_status != 0:
+                self.logger.error(f"Command failed with exit status: {exit_status} and error: {error}")
+                sys.exit(exit_status)
 
-            if process != 0:
-                self.logger.error(f"SSM session ended with exit_code: {process}")
-                sys.exit(process)
+            self.logger.info(f"Command executed successfully: {output}")
+            self.ssh_client.close()
+            sys.exit(0)
+        except paramiko.ssh_exception.ChannelException as e:
+            self.logger.error(f"Channel Error Happened: {e}")
+            sys.exit(1)
 
-            self.logger.info(f"SSM session ended successfully with exit_code: {process}")
-            sys.exit(process)
+    # ======= AWS SSM Agent
+    def start_interactive_ssm_session(self, instance_id: str):
+        self.logger.info(f"Starting interactive shell using secure SSM Agent connection for instance '{instance_id}'.")
+        process_exit_code = self.ssm_session_handler(instance_id)
+        if process_exit_code != 0:
+            self.logger.error(f"SSM session ended with exit_code: {process_exit_code}")
+            sys.exit(process_exit_code)
 
-    def start_ssm_session(self, instance_id: str,):
+        self.logger.info(f"SSM session ended successfully")
+        sys.exit(process_exit_code)
+
+    def run_ssm_command_and_exit(self, command: str, instance_id: str):
+        self.logger.info(f"Running command {command} using secure SSM Agent connection for instance '{instance_id}'.")
+        process_exit_code = self.ssm_command_handler(command, instance_id)
+        if process_exit_code != 0:
+            self.logger.error(f"Command failed with exit_code: {process_exit_code}")
+            sys.exit(process_exit_code)
+
+        self.logger.info(f"Command executed successfully")
+        sys.exit(process_exit_code)
+
+    def ssm_session_handler(self, instance_id: str) -> int:
         command = ["aws", "ssm", "start-session", "--target", instance_id]
         last_input_time = time.time()
 
@@ -169,11 +208,11 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
             
             self.stop_instance(instance_id)
             return exit_code
-        except subprocess.CalledProcessError as e:
+        except (ValueError, subprocess.CalledProcessError) as e:
             self.logger.error(f"Failed to start session: {e}")
             sys.exit(1)
 
-    def execute_ssm_command(self, command: str, instance_id: str) -> bool:
+    def ssm_command_handler(self, command: str, instance_id: str) -> int:
         response = self.ssm.send_command(
             InstanceIds=[instance_id],
             DocumentName="AWS-RunShellScript",
@@ -194,7 +233,7 @@ class ConnectorDefinition(BastionDefinition): # TODO: Include single command exe
             if 'StandardErrorContent' in output:
                 self.logger.error(f"Error: {output['StandardErrorContent']}")
 
-            return False
+            return 1
 
         self.logger.info(f"Command executed successfully: {output['StandardOutputContent']}")
-        return True
+        return 0

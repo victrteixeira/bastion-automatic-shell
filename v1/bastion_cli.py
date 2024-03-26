@@ -11,10 +11,12 @@ app.add_typer(connect_app, name="connect")
 def connect_ssh(
             key_path: str = typer.Option(..., "--key-path", "-k", help="Path to the SSH key in your computer to connect to the bastion"),
             username: str = typer.Option(..., "--username", "-u", help="Bastion username to connect to the bastion"),
+            interactive: bool = typer.Option(False, "--interactive-shell", "-it", help="Start an interactive session with the bastion using SSH"),
+            command: str = typer.Option(None, "--command", "-c", help="Command to run in the SSH session"),
             bastion_name: str = typer.Option(None, "--bastion-name", help="Name of the bastion instance in AWS"),
             wait_ssh: int = typer.Option(20, "--wait-ssh", help="Seconds to wait for the SSH service to be ready")):
     ssh = ConnectorDefinition()
-    ssh.handle_ssh_interaction(bastion_name, key_path, username, wait_ssh)
+    ssh.handle_ssh_interaction(key_path, username, interactive, command, bastion_name, wait_ssh)
 
 @connect_app.command("ssm")
 def connect_ssm(
