@@ -26,17 +26,23 @@ def connect_ssm(
     ssm = ConnectorDefinition()
     ssm.handle_ssm_interaction(interactive, command, bastion_name)
 
-@connect_app.command("about") # TODO: Rewrite this about to integrate new features
+@connect_app.command("about")
 def about():
     started = typer.style("started", fg=typer.colors.GREEN, bold=True)
     stopped = typer.style("stopped", fg=typer.colors.RED, bold=True)
+    features = typer.style("features", fg=typer.colors.BLUE, bold=True)
 
     lines: List[str] = [
-        "This CLI starts a bastion session to manage the bastion and the resources in the private network. It maintains the bastion stopped when not in use to save costs and for security reasons.",
-        f"\nThe bastion is {started} when a user wants to connect to the private network and {stopped} when the user disconnects.",
+        "This CLI starts a instance session to manage it and the resources in the private network. It maintains the instance stopped, when not in use, if you want, to save costs and for security reasons.",
+        f"\nThe instance is {started} when a user wants to connect to the private network and {stopped} when the user disconnects.",
         "\nYou must setup your AWS credentials before using this CLI. You can do this by running `aws configure` in your terminal.",
+        "\nYou must have the Session Manager Plugin installed in your computer to use the SSM feature.",
+        f"\nThis CLI has two main {features}:",
+        "    - Connect to an instance using SSH or SSM, which starts an interactive session with the instance",
+        "    - Run a single command in the instance using SSH or SSM",
         "\nUsage:",
-        "    $ python main.py connect --key-path <path_to_ssh_key> --username <bastion_username>"
+        "    $ python main.py connect --help",
+        "The CLI understands you already have the instances ready in your AWS account to handle SSH or SSM connections.",
     ]
 
     for line in lines:
