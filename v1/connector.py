@@ -3,17 +3,23 @@ import subprocess
 import select
 import paramiko
 import sys
-from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 import botocore.exceptions
+
+from enum import Enum, auto
+from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
 from v1.ec2_utils import BastionDefinition
 
+class ServiceType(Enum):
+    SSH = auto()
+    SSM = auto()
 class ConnectorDefinition(BastionDefinition):
     def __init__(self):
         super().__init__()
         paramiko.util.log_to_file('/tmp/paramiko.log')
         self.ssh_client = paramiko.SSHClient()
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.services = ['ssh', 'ssm']
         self.timeouts = {
             'ssh': 10*60,
             'ssm': 60*60
@@ -24,7 +30,7 @@ class ConnectorDefinition(BastionDefinition):
             self.logger.error("You must provide a command to execute when not using interactive mode.")
             sys.exit(1)
 
-        instance_id = self.ensure_instance_operational(bastion_name, wait_ssh)
+        instance_id = self.ensure_instance_operational(ServiceType.SSH, bastion_name, wait_ssh)
         host = self.get_instance_public_ip(instance_id)
         self.ssh_instance_connection_handler(host=host, username=username, key_path=key_path)
 
@@ -38,7 +44,7 @@ class ConnectorDefinition(BastionDefinition):
             self.logger.error("You must provide a command to execute when not using interactive mode.")
             sys.exit(1)
 
-        instance_id = self.ensure_instance_operational(bastion_name)
+        instance_id = self.ensure_instance_operational(ServiceType.SSM, bastion_name)
 
         if interactive is True and command is None:
             self.start_interactive_ssm_session(instance_id)
@@ -61,7 +67,7 @@ class ConnectorDefinition(BastionDefinition):
         
         return True
     
-    def ensure_instance_operational(self, bastion_name: str, wait_ssh=None) -> str:
+    def ensure_instance_operational(self, service: ServiceType, bastion_name: str, wait_ssh: int) -> str:
         if not self.validate_aws_configuration(self.client):
             self.logger.critical("AWS configuration is not properly set up. Exiting.")
             sys.exit(1)
@@ -72,7 +78,7 @@ class ConnectorDefinition(BastionDefinition):
         if instance_state == 'stopped':
             self.logger.info("Bastion stopped, starting it")
             self.start_instance(instance_id)
-            if wait_ssh is not None: # TODO: Check this WAIT_SSH implementation is broken for sure
+            if service == ServiceType.SSH:
                 self.logger.info(f"Waiting {wait_ssh} seconds for SSH service to initialize.")
                 time.sleep(wait_ssh)
             self.logger.info("Bastion is now running.")
@@ -221,19 +227,28 @@ class ConnectorDefinition(BastionDefinition):
         )
 
         command_id = response["Command"]["CommandId"]
-        time.sleep(2)
 
-        output = self.ssm.get_command_invocation(
-            CommandId=command_id,
-            InstanceId=instance_id
-        )
+        max_retries = 12
+        retry_count = 0
+        wait_interval = 5
 
-        if output["Status"] != "Success": # FIXME: Some processes don't return a sucess status immediately, causing a false negative: "sudo systemctl restart amazon-ssm-agent"
-            self.logger.error(f"Command failed: {output['Status']}")
-            if 'StandardErrorContent' in output:
-                self.logger.error(f"Error: {output['StandardErrorContent']}")
+        while retry_count < max_retries:
+            output = self.ssm.get_command_invocation(
+                CommandId=command_id,
+                InstanceId=instance_id
+            )
 
-            return 1
+            if output["Status"] == "Success":
+                self.logger.info(f"Command executed successfully: {output['StandardOutputContent'].strip()}")
+                return 0
 
-        self.logger.info(f"Command executed successfully: {output['StandardOutputContent']}")
-        return 0
+            if output["Status"] in ["Failed", "Cancelled", "TimedOut"]:
+                if 'StandardErrorContent' in output:
+                    self.logger.error(f"Error: {output['StandardErrorContent']}")
+                return 1
+        
+            time.sleep(wait_interval)
+            retry_count += 1
+
+        self.logger.error("Command status check timed out.")
+        return 1

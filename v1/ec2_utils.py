@@ -36,7 +36,7 @@ class BastionDefinition:
 
         return self.bastion
     
-    def get_instance_state(self, instance_id: str) -> str: # TODO: Check for errors here
+    def get_instance_state(self, instance_id: str) -> str:
         try:
             response = self.client.describe_instance_status(InstanceIds=[instance_id], IncludeAllInstances=True)
             state = response["InstanceStatuses"][0]["InstanceState"]["Name"]
